@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>GeoEasyTrack - 3D Scene</title>
+  <link rel="icon" type="image/jpeg" href="../assets/favIcon.jpg" />
+  <link rel="stylesheet" href="https://js.arcgis.com/4.31/esri/themes/light/main.css" />
+  <script src="https://js.arcgis.com/4.31/"></script>
+
+  <script type="module">
+    // Add Editor to imports
+    const [
+      SceneView,
+      WebScene,
+      Legend,
+      LayerList,
+      GraphicsLayer,
+      PointSymbol3D,
+      ObjectSymbol3DLayer,
+      LabelClass,
+      Editor,
+      FeatureLayer,
+      PathSymbol3DLayer,
+      ElevationProfile,
+      Expand
+    ] = await $arcgis.import([
+      "@arcgis/core/views/SceneView.js",
+      "@arcgis/core/WebScene.js",
+      "@arcgis/core/widgets/Legend.js",
+      "@arcgis/core/widgets/LayerList.js",
+      "@arcgis/core/layers/GraphicsLayer.js",
+      "@arcgis/core/symbols/PointSymbol3D.js",
+      "@arcgis/core/symbols/ObjectSymbol3DLayer.js",
+      "@arcgis/core/layers/support/LabelClass.js",
+      "@arcgis/core/widgets/Editor.js",
+      "@arcgis/core/layers/FeatureLayer.js",
+      "@arcgis/core/symbols/PathSymbol3DLayer.js",
+      "@arcgis/core/widgets/ElevationProfile.js",
+      "@arcgis/core/widgets/Expand.js"
+    ]);
+
+    const titleDiv = document.getElementById("titleDiv");
+
+    const scene = new WebScene({
+      portalItem: {
+        id: "821749ec13e94a4790f393f7de021a86"
+      }
+    });
+
+    const view = new SceneView({
+      map: scene,
+      container: "viewDiv",
+      padding: {
+        top: 40
+      }
+    });
+
+    const graphicsLayer = new GraphicsLayer({ elevationInfo: { mode: "on-the-ground" } });
+    scene.add(graphicsLayer);
+
+    view.when(() => {
+      titleDiv.innerHTML = scene.portalItem.title;
+
+      const legend = new Legend({ view });
+      view.ui.add(legend, "bottom-left");
+
+      const layerList = new LayerList({ view });
+      view.ui.add(layerList, "top-right");
+
+      // Add ElevationProfile widget at the bottom
+      const elevationProfile = new ElevationProfile({
+        view: view,
+        profiles: [
+          {
+            type: "ground", // first profile uses the ground elevation
+            title: "Ground profile"
+          }
+        ],
+        visibleElements: {
+          selectButton: true
+        }
+      });
+
+      const elevationExpand = new Expand({
+        view: view,
+        content: elevationProfile,
+        expanded: false,
+        expandIconClass: "esri-icon-chart",
+        group: "bottom"
+      });
+
+      view.ui.add(elevationExpand, "bottom-left");
+
+      scene.when(() => {
+        const towerLayer = scene.layers.find(layer =>
+          layer.title && layer.title.includes("Wondalga Bannaby Tower Locations")
+        );
+
+        if (!towerLayer) {
+          console.warn("Tower layer not found.");
+          return;
+        }
+        view.popup.dockEnabled = true;
+        view.popup.dockOptions = {
+          buttonEnabled: false,
+          breakpoint: false,
+          position: "top-right"
+        };
+        towerLayer.when(() => {
+          console.warn("Found tower layer");
+          console.log(towerLayer.labelingInfo)
+          let labelClass = new LabelClass({
+            labelExpressionInfo: {
+              expression: `"Tower " + $feature.Stru_ID + " RiskIndex = 999"`
+            },
+            symbol: {
+              type: "label-3d",
+              symbolLayers: [
+                {
+                  type: "text",
+                  material: { color: "black" },
+                  size: 12,
+                  background: {
+                    color: "white"
+                  },
+                  halo: {
+                    color: "white",
+                    size: 1
+                  },
+                  font: {
+                    family: "sans-serif",
+                    weight: "bold"
+                  }
+                }
+              ],
+              verticalOffset: {
+                screenLength: 40,
+                maxWorldLength: 500,
+                minWorldLength: 20
+              },
+              callout: {
+                type: "line",
+                color: "gray",
+                size: 1
+              }
+            }
+          });
+
+          const towerSymbol = new PointSymbol3D({
+            symbolLayers: [
+              new ObjectSymbol3DLayer({
+                resource: {
+                  href: "https://ezw21.github.io/EUC_2025_Aurecon/models/transmission_tower.glb"
+                },
+                height: 70,
+                anchor: "bottom"
+              })
+            ]
+          });
+
+          // Query all features from the original towerLayer
+          towerLayer.queryFeatures().then(results => {
+            // Prepare client-side features
+            const clientTowerFeatures = results.features.map((feature, i) => ({
+              geometry: feature.geometry,
+              attributes: {
+                OBJECTID: i + 1,
+                Stru_ID: feature.attributes.Stru_ID
+              }
+            }));
+
+            // Create client-side FeatureLayer for towers
+            const clientTowerLayer = new FeatureLayer({
+              title: "Movable Towers",
+              source: clientTowerFeatures,
+              objectIdField: "OBJECTID",
+              geometryType: "point", // <-- Add this line
+              fields: [
+                { name: "OBJECTID", type: "oid" },
+                { name: "Stru_ID", type: "string" }
+              ],
+              renderer: {
+                type: "simple",
+                symbol: towerSymbol
+              },
+              labelingInfo: [labelClass],
+              elevationInfo: { mode: "on-the-ground" },
+              editingEnabled: true,
+            });
+
+            // Add to scene and enable editing
+            scene.add(clientTowerLayer);
+            towerLayer.visible = false;
+
+            // Add Editor widget for the clientTowerLayer
+            const editor = new Editor({
+              view: view,
+              layerInfos: [{
+                layer: clientTowerLayer,
+                enabled: true,
+                addEnabled: true,
+                updateEnabled: true,
+                deleteEnabled: true
+              }]
+            });
+            view.ui.add(editor, "top-left");
+            // Assume treeLayer is your FeatureLayer for trees
+            // and editor is your Editor widget for towers
+
+            editor.viewModel.watch("state", (state) => {
+              console.log(state);
+              if (state === "editing-attributes") {
+                console.log('Editing attributes');
+                const ffvm = editor.viewModel.featureFormViewModel;
+                if (ffvm && ffvm.feature) {
+                  const feature = ffvm.feature;
+                  // Watch for geometry changes on the feature
+                  let geometryHandle = feature.watch("geometry", (newGeometry) => {
+                    if (newGeometry) {
+                      // --- Tree hiding logic ---
+                      const query = treeLayer.createQuery();
+                      query.geometry = newGeometry;
+                      query.distance = 100;
+                      query.units = "meters";
+                      query.spatialRelationship = "intersects";
+                      query.returnGeometry = true;
+                      treeLayer.queryFeatures(query).then((result) => {
+                        const treeOIDsToHide = result.features.map(f => f.attributes.OID);
+                        // console.log("Trees to show:", treeOIDsToShow);
+
+                        view.whenLayerView(treeLayer).then((layerView) => {
+                          if (treeOIDsToHide.length > 0) {
+                            layerView.filter = {
+                              where: `OID NOT IN (${treeOIDsToHide.join(",")})`
+                            };
+                          } else {
+                            layerView.filter = null;
+                          }
+                        });
+                      });
+
+                      // --- Polyline update logic ---
+                      //EXW  LOOK AT THIS
+                      let deletedTrackInfos = [];
+                      if (clientTracksLayer) {
+                        const polylineQuery = clientTracksLayer.createQuery();
+                        polylineQuery.geometry = newGeometry;
+                        polylineQuery.distance = 100;
+                        polylineQuery.units = "meters";
+                        polylineQuery.spatialRelationship = "intersects";
+                        polylineQuery.returnGeometry = true;
+                        polylineQuery.outFields = ["*"];
+                        clientTracksLayer.queryFeatures(polylineQuery).then((result) => {
+                          const intersectingPolylines = result.features;
+                          deletedTrackInfos = []; // Reset
+
+                          intersectingPolylines.forEach((polyFeature) => {
+                            // Store start point and attributes for later
+                            const paths = polyFeature.geometry.paths[0];
+                            const startPoint = paths[0];
+                            deletedTrackInfos.push({
+                              startPoint: [...startPoint],
+                              attributes: { ...polyFeature.attributes }
+                            });
+
+                            // Delete the feature
+                            clientTracksLayer.applyEdits({
+                              deleteFeatures: [polyFeature]
+                            }).then((deleteResult) => {
+                              console.log("Track deleted, result:", deleteResult);
+                            });
+                          });
+                        });
+                      }
+
+                      // New logic for clientTracksLayer
+                      if (clientTracksLayer) {
+                        const polylineQuery = clientTracksLayer.createQuery();
+                        polylineQuery.geometry = newGeometry;
+                        polylineQuery.distance = 100;
+                        polylineQuery.units = "meters";
+                        polylineQuery.spatialRelationship = "intersects";
+                        polylineQuery.returnGeometry = true;
+                        polylineQuery.outFields = ["*"];
+
+                        clientTracksLayer.queryFeatures(polylineQuery).then((result) => {
+                          console.log(result)
+                          const intersectingPolylines = result.features;
+                          console.log(intersectingPolylines.length, "polylines intersecting with the tower");
+                          intersectingPolylines.forEach((polyFeature) => {
+                            // Log before geometry and extent center
+                            const beforeExtent = polyFeature.geometry.extent;
+                            console.log("Before edit extent center:", beforeExtent.center.latitude, beforeExtent.center.longitude);
+
+                            // Clone and update geometry as before
+                            const polyGeom = polyFeature.geometry.clone();
+                            let paths = polyGeom.paths[0];
+                            let start = paths[0];
+                            let end = paths[paths.length - 1];
+
+                            const distToStart = Math.hypot(start[0] - newGeometry.longitude, start[1] - newGeometry.latitude);
+                            const distToEnd = Math.hypot(end[0] - newGeometry.longitude, end[1] - newGeometry.latitude);
+
+                            if (distToStart < distToEnd) {
+                              paths[0][0] = newGeometry.longitude;
+                              paths[0][1] = newGeometry.latitude;
+                            } else {
+                              paths[paths.length - 1][0] = newGeometry.longitude;
+                              paths[paths.length - 1][1] = newGeometry.latitude;
+                            }
+
+                            // Log after geometry and extent center
+                            const afterExtent = polyGeom.extent;
+                            console.log("After edit extent center:", afterExtent.center.latitude, afterExtent.center.longitude);
+
+                            // Update the polyline geometry and symbol
+                            polyFeature.geometry = polyGeom;
+                            polyFeature.symbol = {
+                              type: "line-3d",
+                              symbolLayers: [
+                                new PathSymbol3DLayer({
+                                  profile: "quad",
+                                  material: { color: [0, 0, 255, 0.7] }, // blue
+                                  width: 5,
+                                  height: 2,
+                                  profileRotation: "heading",
+                                  cap: "round",
+                                  join: "round",
+                                  anchor: "bottom"
+                                })
+                              ]
+                            };
+
+                            // Apply the update
+                            clientTracksLayer.applyEdits({
+                              updateFeatures: [polyFeature]
+                            }).then((updateResult) => {
+                              console.log("Feature updated, result:", updateResult);
+                            });
+                          });
+                        });
+                      }
+                    }
+                  });
+                } else {
+                  console.warn("featureFormViewModel or feature not available yet.");
+                }
+              }
+            });
+
+          });
+        });
+
+        // Find the layers by title
+        const roadSegmentsLayer = scene.layers.find(layer =>
+          layer.title && layer.title.includes("Humelink Road Segments")
+        );
+        const accessTracksLayer = scene.layers.find(layer =>
+          layer.title && layer.title.includes("Humelink Access Tracks")
+        );
+
+        if (roadSegmentsLayer) {
+          console.log('BBB')
+          roadSegmentsLayer.elevationInfo = {
+            mode: "relative-to-ground",
+            offset: 5
+          };
+          roadSegmentsLayer.renderer = {
+            type: "simple",
+            symbol: {
+              type: "line-3d",
+              symbolLayers: [
+                new PathSymbol3DLayer({
+                  profile: "quad",
+                  material: { color: [255, 255, 0, 0.7] }, // yellow
+                  width: 5,
+                  height: 2,
+                  profileRotation: "heading",
+                  cap: "round",
+                  join: "round",
+                  anchor: "bottom"
+                })
+              ]
+            }
+          };
+        }
+
+        if (accessTracksLayer) {
+          console.log('AAA')
+          accessTracksLayer.elevationInfo = {
+            mode: "relative-to-ground",
+            offset: 5
+          };
+          accessTracksLayer.renderer = {
+            type: "simple",
+            symbol: {
+              type: "line-3d",
+              symbolLayers: [
+                new PathSymbol3DLayer({
+                  profile: "quad",
+                  material: { color: [255, 0, 0, 0.7] }, // red
+                  width: 25,
+                  height: 4,
+                  profileRotation: "heading",
+                  cap: "round",
+                  join: "round",
+                  anchor: "bottom"
+                })
+              ]
+            }
+          };
+        }
+
+        const treeRenderer = {
+          type: "simple", // autocasts as new SimpleRenderer()
+          symbol: {
+            type: "web-style", // autocasts as new WebStyleSymbol()
+            styleName: "EsriLowPolyVegetationStyle",
+            name: "Populus",
+          },
+          label: "generic tree",
+          visualVariables: [
+            {
+              type: "size",
+              axis: "height",
+              field: "TreeHeight", // <-- updated to match your attribute
+              valueUnit: "meters",
+            },
+          ],
+        };
+
+        // Find the tree points layer by title
+        const treeLayer = scene.layers.find(layer =>
+          layer.title && layer.title.includes("treepoints_AOI_analysis")
+        );
+
+        if (treeLayer) {
+          treeLayer.renderer = treeRenderer;
+        }
+
+        // Find the access tracks layer by title
+        // (Already declared above as accessTracksLayer)
+
+        let clientTracksLayer;
+
+        if (accessTracksLayer) {
+          accessTracksLayer.queryFeatures().then(results => {
+            // Prepare client-side features
+            const clientTrackFeatures = results.features.map((feature, i) => ({
+              geometry: feature.geometry,
+              attributes: {
+                OBJECTID: i + 1,
+                ...feature.attributes // copy other attributes if needed
+              }
+            }));
+
+            // Define fields manually, similar to how you did for towers
+            // Make sure to include OBJECTID and any fields you use in your app
+            const trackFields = [
+              { name: "OBJECTID", type: "oid" },
+              // Add other fields as needed, for example:
+              // { name: "TrackID", type: "string" },
+              // { name: "SomeField", type: "string" },
+              // ...etc, matching your original layer's schema
+            ];
+
+            // Optionally, add all unique field names from the first feature's attributes
+            const sampleAttrs = results.features[0]?.attributes || {};
+            Object.keys(sampleAttrs).forEach(key => {
+              if (key !== "OBJECTID" && !trackFields.find(f => f.name === key)) {
+                trackFields.push({ name: key, type: "string" });
+              }
+            });
+
+            // Create client-side FeatureLayer for tracks
+            clientTracksLayer = new FeatureLayer({
+              title: "Movable Access Tracks",
+              source: clientTrackFeatures,
+              objectIdField: "OBJECTID",
+              geometryType: "polyline",
+              fields: trackFields,
+              renderer: accessTracksLayer.renderer,
+              elevationInfo: accessTracksLayer.elevationInfo,
+              editingEnabled: true,
+            });
+
+            // Add to scene and hide the original
+            scene.add(clientTracksLayer);
+            accessTracksLayer.visible = false;
+          });
+        }
+
+
+      });
+    });
+
+
+  </script>
+
+  <style>
+    html,
+    body,
+    #viewDiv {
+      padding: 0;
+      margin: 0;
+      height: 100%;
+      width: 100%;
+    }
+
+    #titleDiv {
+      background-color: lightgray;
+      color: black;
+      padding: 5px;
+      position: absolute;
+      z-index: 2;
+      top: 0;
+      right: 0;
+      font-size: 20pt;
+      font-weight: bolder;
+      width: 100%;
+      height: 30px;
+      text-align: center;
+      opacity: 0.75;
+    }
+
+    #statsDiv {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      padding: 14px 22px;
+      z-index: 10;
+      min-width: 200px;
+      font-size: 15px;
+      line-height: 2;
+      opacity: 0.95;
+      border: 1px solid #ddd;
+    }
+
+    #statsDiv b {
+      color: #222;
+      font-weight: 600;
+    }
+
+    #statsDiv span {
+      color: #0079c1;
+      font-weight: 500;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="viewDiv" class="esri-widget">
+    <div id="titleDiv"></div>
+  </div>
+  <div id="statsDiv" class="esri-widget">
+    <b>Stat 1: <span id="stat1">Displaced Tree : 20</span></b><br>
+    <b>Stat 2: <span id="stat2">Cost for selected Tracks : 3000$</span></b><br>
+    <b>Stat 3: <span id="stat3">Intersect with waterbody: No</span></b><br>
+    <b>Stat 4: <span id="stat4">Average Slope on selected Tracks: 20 Degree</span></b>
+  </div>
+</body>
+
+</html>
