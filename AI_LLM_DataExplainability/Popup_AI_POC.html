@@ -1,177 +1,275 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-
-<head>
+  <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
-    <title>Aurecon AI Popup | Sample | ArcGIS Maps SDK for JavaScript 4.32</title>
-
-    <link rel="stylesheet" href="https://js.arcgis.com/4.32/esri/themes/light/main.css" />
+    <meta
+      name="viewport"
+      content="initial-scale=1,maximum-scale=1,user-scalable=no"
+    />
+    <title>
+      Aurecon AI Popup | Sample | ArcGIS Maps SDK for JavaScript 4.32
+    </title>
+    <link
+      rel="stylesheet"
+      href="https://js.arcgis.com/4.32/esri/themes/light/main.css"
+    />
     <link rel="stylesheet" href="styles.css" />
     <script src="https://js.arcgis.com/4.32/"></script>
     <script src="config.js"></script>
-
     <script>
-        require([
-            "esri/views/SceneView",
-            "esri/WebScene",
-            "esri/widgets/Popup"
-        ], (SceneView, WebScene, Popup) => {
-            const titleDiv = document.getElementById("titleDiv");
+      require([
+        "esri/views/SceneView",
+        "esri/WebScene",
+        "./utils.js",
+        "esri/core/reactiveUtils",
+        "esri/Color",
+      ], (SceneView, WebScene, utils, reactiveUtils, Color) => {
+        const titleDiv = document.getElementById("titleDiv");
 
-
-            /************************************************************
-             * Creates a new WebScene instance. A WebScene must reference
-             * a PortalItem ID that represents a WebScene saved to
-             * arcgis.com or an on-premise portal.
-             *
-             * To load a WebScene from an on-premise portal, set the portal
-             * url with esriConfig.portalUrl.
-             ************************************************************/
-            const scene = new WebScene({
-                portalItem: {
-                    // autocasts as new PortalItem()
-                    id: "4ee834f9048b4d0cb0962c28cfb1b292"
-                }
-            });
-
-            /************************************************************
-             * Set the WebScene instance to the map property in a SceneView.
-             ************************************************************/
-            const view = new SceneView({
-                map: scene,
-                container: "viewDiv",
-                padding: {
-                    top: 40
-                },
-            });
-
-
-            view.when(function () {
-
-                // when the scene and view resolve, display the scene's
-                // title in the DOM
-                const title = scene.portalItem.title;
-                titleDiv.innerHTML = title;
-
-
-            });
-
-            view.watch("popup.selectedFeature", function (feature) {
-                if (feature) {
-                    view.popup.dockEnabled = true;
-                    view.popup.dockOptions = {
-                        buttonEnabled: true,
-                        breakpoint: false,
-                        position: "bottom-left"
-                    };
-
-                }
-            });
-
-            // When a feature is selected in the popup
-            view.watch("popup.selectedFeature", function (feature) {
-                console.log("Selected feature:", feature);
-                const chatContainer = document.getElementById('chat-container');
-                if (feature && feature.attributes) {
-
-                    // Store as a string
-                    chatContainer.setAttribute('data-feature-attributes', JSON.stringify(feature.attributes));
-                    chatContainer.style.display = 'flex';
-                } else {
-                    chatContainer.removeAttribute('data-feature-attributes');
-                    chatContainer.style.display = 'none';
-                }
-            });
-
+        const scene = new WebScene({
+          portalItem: {
+            id: "4ee834f9048b4d0cb0962c28cfb1b292",
+          },
         });
-    </script>
-</head>
 
-<body>
-    <div id="viewDiv" class="esri-widget">
-        <div id="titleDiv"></div>
-    </div>
+        const view = new SceneView({
+          container: "viewDiv",
+          map: scene,
+          padding: { top: 40 },
+          environment: {
+            lighting: {
+              directShadowsEnabled: true,
+            },
+          },
+          highlightOptions: {
+            fillOpacity: 0.1,
+            shadowColor: new Color("cyan"),
+            shadowOpacity: 0.3,
+          },
+        });
 
-    <div id="chat-container">
-        <div id="chat-messages"></div>
-        <div style="display: flex; margin-top: 8px;">
-            <input type="text" id="chat-input" placeholder="Type your message..." autocomplete="off" />
-            <button id="chat-send">Send</button>
-        </div>
-    </div>
+        view.when(function () {
+          const title = scene.portalItem.title;
+          titleDiv.innerHTML = title;
+        });
 
-    <script>
-        const chatMessages = document.getElementById('chat-messages');
-        document.getElementById('chat-send').onclick = async function () {
-            const input = document.getElementById('chat-input').value;
-            if (!input) return;
-
-            // Add user message
-            addChatMessage(input, "user");
-            document.getElementById('chat-input').value = "";
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-
-            // Prepare feature attributes
-            const chatContainer = document.getElementById('chat-container');
-            let featureAttributes = "";
-            if (chatContainer.hasAttribute('data-feature-attributes')) {
-                try {
-                    featureAttributes = chatContainer.getAttribute('data-feature-attributes');
-                } catch (e) {
-                    featureAttributes = "";
-                }
+        // Use reactiveUtils.watch instead of view.watch
+        reactiveUtils.watch(
+          () => view.popup.selectedFeature,
+          function (feature) {
+            view.popup.collapsed = true;
+            view.popup.dockEnabled = true;
+            view.popup.dockOptions = {
+              buttonEnabled: true,
+              breakpoint: false,
+              position: "bottom-left",
+            };
+            const chatContainer = document.getElementById("chat-container");
+            const chatMessages = document.getElementById("chat-messages");
+            if (feature && feature.attributes) {
+              chatContainer.setAttribute(
+                "data-feature-attributes",
+                JSON.stringify(feature.attributes)
+              );
+              chatContainer.style.display = "flex";
+              if (!chatMessages.hasAttribute("data-welcome")) {
+                addChatMessage(
+                  "Hi ESRI User Conference audience, I'm Ivan your popup explorer.",
+                  "ai"
+                );
+                chatMessages.setAttribute("data-welcome", "true");
+              }
+            } else {
+              chatContainer.removeAttribute("data-feature-attributes");
+              chatContainer.style.display = "none";
+              chatMessages.removeAttribute("data-welcome");
+              chatMessages.innerHTML = "";
             }
+          }
+        );
 
-            let message = input;
-            if (featureAttributes) {
-                message += `\n\nFeature attributes: ${featureAttributes}`;
-            }
+        utils.setupPopupAI(view, scene);
 
-            // Add loading message
-            const loadingMsg = addChatMessage("Loading...", "ai");
+        // Chat UI logic
+        const chatMessages = document.getElementById("chat-messages");
+        document.getElementById("chat-send").onclick = async function () {
+          const input = document.getElementById("chat-input").value;
+          if (!input) return;
 
+          addChatMessage(input, "user");
+          document.getElementById("chat-input").value = "";
+          chatMessages.scrollTop = chatMessages.scrollHeight;
+
+          const chatContainer = document.getElementById("chat-container");
+          let featureAttributes = "";
+          if (chatContainer.hasAttribute("data-feature-attributes")) {
             try {
-                const endpoint = window.AI_CONFIG.endpoint;
-                const apiKey = window.AI_CONFIG.apiKey;
-                const response = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'api-key': apiKey
-                    },
-                    body: JSON.stringify({
-                        messages: [{ role: "user", content: message }],
-                        max_tokens: 800,
-                        temperature: 0.7,
-                        top_p: 0.95,
-                        frequency_penalty: 0,
-                        presence_penalty: 0
-                    })
-                });
-                const data = await response.json();
-                // Update loading message with actual response
-                loadingMsg.querySelector('.chat-bubble').innerText =
-                    data.choices && data.choices[0] && data.choices[0].message
-                        ? data.choices[0].message.content.trim()
-                        : JSON.stringify(data);
+              featureAttributes = chatContainer.getAttribute(
+                "data-feature-attributes"
+              );
             } catch (e) {
-                loadingMsg.querySelector('.chat-bubble').innerText = "Error: " + e;
+              featureAttributes = "";
             }
+          }
+
+          let message = input;
+          if (featureAttributes) {
+            message += `\n\nFeature attributes: ${featureAttributes}`;
+          }
+
+          const loadingMsg = addChatMessage("Thinking...", "ai");
+
+          try {
+            const endpoint = window.AI_CONFIG.endpoint;
+            const apiKey = window.AI_CONFIG.apiKey;
+
+            const systemMessage = {
+              role: "system",
+              content:
+                window.AI_CONFIG.systemMessage ||
+                "You are a helpful AI assistant. You can answer questions about the data in this popup, including its attributes and related information. If you don't know the answer, you can suggest searching for more information.",
+            };
+            const userMessage = { role: "user", content: message };
+            const messages = [systemMessage, userMessage];
+
+            const response = await fetch(endpoint, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "api-key": apiKey,
+              },
+              body: JSON.stringify({
+                messages: messages,
+                max_tokens: 800,
+                temperature: 0.7,
+                top_p: 0.95,
+                frequency_penalty: 0,
+                presence_penalty: 0,
+              }),
+            });
+            const data = await response.json();
+            loadingMsg.querySelector(".chat-bubble").innerText =
+              data.choices && data.choices[0] && data.choices[0].message
+                ? data.choices[0].message.content.trim()
+                : JSON.stringify(data);
+          } catch (e) {
+            loadingMsg.querySelector(".chat-bubble").innerText = "Error: " + e;
+          }
         };
 
+        document
+          .getElementById("chat-input")
+          .addEventListener("keyup", function (event) {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              document.getElementById("chat-send").click();
+            }
+          });
+
         function addChatMessage(text, sender) {
-            const msgDiv = document.createElement('div');
-            msgDiv.className = `chat-message ${sender}`;
-            const bubble = document.createElement('div');
-            bubble.className = 'chat-bubble';
-            bubble.innerText = text;
-            msgDiv.appendChild(bubble);
-            chatMessages.appendChild(msgDiv);
-
-            return msgDiv;
+          const msgDiv = document.createElement("div");
+          msgDiv.className = `chat-message ${sender}`;
+          const bubble = document.createElement("div");
+          bubble.className = "chat-bubble";
+          bubble.innerText = text;
+          msgDiv.appendChild(bubble);
+          chatMessages.appendChild(msgDiv);
+          return msgDiv;
         }
+      });
     </script>
-</body>
+  </head>
 
+  <body>
+    <div id="viewDiv" class="esri-widget">
+      <div id="titleDiv"></div>
+    </div>
+
+    <div id="chat-container" style="display: none">
+      <div style="padding: 16px 24px 0 24px">
+        <div
+          style="
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+            margin-bottom: 12px;
+          "
+        >
+          <div style="flex: 1">
+            <label
+              for="model-select"
+              style="font-weight: bold; display: block; margin-bottom: 4px"
+              >Try different Model(s)</label
+            >
+            <select
+              id="model-select"
+              style="
+                width: 100%;
+                padding: 6px 8px;
+                border-radius: 6px;
+                border: 1px solid #ccc;
+              "
+            >
+              <option value="gpt-4">GPT-4o</option>
+              <option value="gpt-3.5">GPT-3.5</option>
+            </select>
+          </div>
+          <div style="flex: 1">
+            <label
+              for="style-select"
+              style="font-weight: bold; display: block; margin-bottom: 4px"
+              >Conversation Style</label
+            >
+            <select
+              id="style-select"
+              style="
+                width: 100%;
+                padding: 6px 8px;
+                border-radius: 6px;
+                border: 1px solid #ccc;
+              "
+            >
+              <option value="precise">Precise</option>
+              <option value="professional">Professional</option>
+              <option value="creative">Creative</option>
+            </select>
+          </div>
+        </div>
+        <div
+          style="
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+          "
+        >
+          <label
+            for="intelligent-search"
+            style="font-weight: bold; margin-bottom: 0; margin-right: 16px"
+            >Intelligent Search</label
+          >
+          <input
+            type="checkbox"
+            id="intelligent-search"
+            style="margin-bottom: 0"
+          />
+          <label
+            for="intelligent-search"
+            style="margin-left: 4px; font-weight: normal"
+            >Enable</label
+          >
+        </div>
+      </div>
+      <div id="chat-messages"></div>
+      <div>
+        <input
+          type="text"
+          id="chat-input"
+          placeholder="Type your message..."
+          autocomplete="off"
+        />
+        <button id="chat-send">Send</button>
+      </div>
+    </div>
+  </body>
 </html>
