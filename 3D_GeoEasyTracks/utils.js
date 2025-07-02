@@ -1,8 +1,5 @@
 define([
-  "esri/widgets/Legend",
-  "esri/widgets/LayerList",
   "esri/layers/FeatureLayer",
-  "esri/layers/GraphicsLayer",
   "esri/widgets/Editor",
   "esri/widgets/ElevationProfile",
   "esri/widgets/Expand",
@@ -15,10 +12,7 @@ define([
   "esri/geometry/projection",
   "esri/geometry/geometryEngine",
 ], function (
-  Legend,
-  LayerList,
   FeatureLayer,
-  GraphicsLayer,
   Editor,
   ElevationProfile,
   Expand,
@@ -162,6 +156,7 @@ define([
     const newTrackCost = Math.round(totalLength * cost);
     const costChange = newTrackCost - prevTrackCost;
     const diffAbs = Math.abs(costChange).toLocaleString();
+    console.log(prevTrackCost, newTrackCost, costChange, diffAbs);
     let arrow = "";
     let color = "";
     if (costChange < 0) {
@@ -223,8 +218,13 @@ define([
         arrow = "";
         color = "";
       }
-      stat0.textContent = `RiskIndex Δ: ${diffAbs}`;
-      riskArrow.innerHTML = `<span style="color:${color};font-weight:bold;">${arrow}</span>`;
+      // Arrow on the left of the number
+      stat0.innerHTML = `RiskIndex Δ: <span style="color:${color};font-weight:bold;">${arrow}</span> ${diffAbs}`;
+      riskArrow.innerHTML = "";
+      const stat3 = document.getElementById("stat3");
+      if (stat3) {
+        stat3.innerHTML = `Safe Distance from Water Body <span style="color:green;font-weight:bold;">✔</span>`;
+      }
     }
   }
 
@@ -234,10 +234,6 @@ define([
     if (titleDiv && scene.portalItem?.title) {
       titleDiv.innerText = scene.portalItem.title;
     }
-
-    // Widgets
-    // view.ui.add(new Legend({ view }), "bottom-left");
-    view.ui.add(new LayerList({ view }), "top-right");
 
     const elevationProfile = new ElevationProfile({
       view,
@@ -307,7 +303,7 @@ define([
       };
       roadSegmentsLayer.renderer = {
         type: "simple",
-        symbol: createLine3DSymbol([255, 255, 0, 0.7], 5, 2), // yellow
+        symbol: createLine3DSymbol([0, 0, 0, 0.7], 5, 2), // black
       };
     }
 
@@ -323,7 +319,7 @@ define([
       };
       accessTracksLayer.renderer = {
         type: "simple",
-        symbol: createLine3DSymbol([255, 0, 0, 0.7]), // red
+        symbol: createLine3DSymbol([120, 120, 120, 0.7]), // lighter grey
       };
       accessTracksLayer.queryFeatures().then((results) => {
         const clientTrackFeatures = results.features.map((feature, i) => ({
