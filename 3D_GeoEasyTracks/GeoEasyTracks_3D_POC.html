@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>GeoEasyTrack - 3D Scene</title>
+    <link rel="stylesheet" href="https://js.arcgis.com/4.33/esri/themes/light/main.css" />
+    <script src="https://js.arcgis.com/4.33/"></script>
+    <script>
+      require([
+        "esri/WebScene",
+        "esri/views/SceneView",
+        "./utils.js"
+      ], function (WebScene, SceneView, setupScene) {
+        const scene = new WebScene({
+          portalItem: { id: "821749ec13e94a4790f393f7de021a86" }
+        });
+        const view = new SceneView({
+          container: "viewDiv",
+          map: scene,
+          padding: { top: 40 }
+        });
+        scene.when(() => setupScene(view, scene));
+      });
+    </script>
+    <style>
+      html, body, #viewDiv {
+        margin: 0;
+        height: 100%;
+        width: 100%;
+      }
+      #titleDiv {
+        background-color: lightgray;
+        color: black;
+        padding: 5px;
+        position: absolute;
+        z-index: 2;
+        top: 0;
+        right: 0;
+        font-size: 20pt;
+        font-weight: bolder;
+        width: 100%;
+        height: 30px;
+        text-align: center;
+        opacity: 0.75;
+      }
+      #statsDiv {
+        position: absolute;
+        bottom: 20px;
+        right: 20px;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        padding: 14px 22px;
+        z-index: 10;
+        min-width: 200px;
+        font-size: 15px;
+        line-height: 2;
+        opacity: 0.95;
+        border: 1px solid #ddd;
+      }
+      #statsDiv b { color: #222; font-weight: 600; }
+      #statsDiv span { color: #0079c1; font-weight: 500; }
+    </style>
+  </head>
+  <body>
+    <div id="viewDiv" class="esri-widget">
+      <div id="titleDiv"></div>
+    </div>
+    <div id="statsDiv" class="esri-widget">
+      <b>Stat 0: <span id="stat0">RiskIndex :</span> <span id="riskArrow"></span></b><br />
+      <b>Stat 1: <span id="stat1">Displaced Tree : </span></b><br />
+      <b>Stat 2: <span id="stat2">Cost for Suggested Tracks</span></b><br />
+      <b>Stat 3: <span id="stat3">Intersect with waterbody: No</span></b><br />
+      <b>Stat 4: <span id="stat4" style="margin-top:10px;">Use Elevation Profile for Slope stats..</span></b>
+    </div>
+  </body>
+</html>
