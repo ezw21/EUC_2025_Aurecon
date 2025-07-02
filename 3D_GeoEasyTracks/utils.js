@@ -1,3 +1,27 @@
+/**
+ * utils.js - GeoEasyTracks 3D Utility Functions
+ *
+ * This module provides helper functions and the main setupScene function for the GeoEasyTracks 3D web application.
+ *
+ * Features:
+ * - 3D symbol and label helpers for towers and tracks
+ * - Dynamic calculation and UI updates for cost, risk, elevation, and tree displacement statistics
+ * - Handles creation and editing of proposed towers and access tracks using ArcGIS FeatureLayers and Editor widget
+ * - Integrates with Hexbin and Tree layers for spatial analysis and visualization
+ * - Supports dynamic UI updates for user actions (e.g., moving towers, editing tracks)
+ *
+ * Dependencies:
+ * - ArcGIS API for JavaScript (FeatureLayer, Editor, ElevationProfile, Expand, Symbol3D, LabelClass, geometryEngine, etc.)
+ *
+ * Usage:
+ *   Call setupScene(view, scene) after your SceneView and WebScene are initialized.
+ *   The function will set up all widgets, layers, and event handlers for the GeoEasyTracks 3D workflow.
+ *
+ * Author: Edward Wong, Eagle Technology NZ. EUC 2025 Aurecon Plenary
+ * Email: exw@eagle.co.nz
+ * Last updated: July 2025
+ */
+
 define([
   "esri/layers/FeatureLayer",
   "esri/widgets/Editor",
@@ -120,11 +144,39 @@ define([
     return 999; // Default value if no intersection found
   }
 
+  // Check if tower intersects with Hydroline (waterbody) layer
+  async function isTowerIntersectingHydroline(
+    towerGeom,
+    hydrolineLayer,
+    geometryEngine,
+    projection
+  ) {
+    // Query hydroline features
+    const hydrolineFeatures = await hydrolineLayer
+      .queryFeatures()
+      .then((res) => res.features);
+
+    // Project towerGeom to hydroline's spatial reference if needed
+    let projectedTowerGeom = towerGeom;
+    const hydrolineSR = hydrolineFeatures[0]?.geometry?.spatialReference;
+    if (towerGeom.spatialReference?.wkid !== hydrolineSR?.wkid) {
+      await projection.load();
+      projectedTowerGeom = projection.project(towerGeom, hydrolineSR);
+    }
+
+    for (const hydroline of hydrolineFeatures) {
+      if (geometryEngine.intersects(projectedTowerGeom, hydroline.geometry)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  // Persist the start length of accessTrackLayer
   let startLength = 0;
 
   // Helper to initialize prevTrackCost with the current total cost
 
-  async function calculateAndUpdateTrackCost(cTracksLayer, sTracksLayer) {
+  async function calculateAndUpdateCostStats(cTracksLayer, sTracksLayer) {
     let totalLength = 0;
     const cost = 9.7; // EXW it should be 0.97, just to emphatize the cost per meter
     const clientResult = await cTracksLayer.queryFeatures({
@@ -156,7 +208,6 @@ define([
     const newTrackCost = Math.round(totalLength * cost);
     const costChange = newTrackCost - prevTrackCost;
     const diffAbs = Math.abs(costChange).toLocaleString();
-    console.log(prevTrackCost, newTrackCost, costChange, diffAbs);
     let arrow = "";
     let color = "";
     if (costChange < 0) {
@@ -177,8 +228,7 @@ define([
       stat2.innerHTML = `Cost for Suggested Tracks: <b>${newTrackCost.toLocaleString()}$</b>${diffHtml}`;
     }
   }
-
-  function renderElevationStats(stats) {
+  function updateElevationStats(stats) {
     if (!stats) return "";
     // Unicode up/down arrows for clarity
     return `
@@ -199,8 +249,20 @@ define([
       }°</span>
     `;
   }
+  function updateTreeStats(treeHideCount) {
+    const stat1 = document.getElementById("stat1");
+    if (stat1) {
+      // Example SVG icon (replace 'tree.svg' with your own file if needed)
+      const treeIcon = `<img src="../assets/tree-flower-super-mario-fire-flower.png" alt="tree" style="height:1em;vertical-align:middle;margin-right:4px;">`;
+      // Estimate: 21.77 kg CO₂/year per tree (typical for a mature tree)
+      const co2PerTree = 21.77;
+      // EXW - setting the scenario of on average we displace 10 trees per tower, if this tower displace 3 then we got 7 extra
+      const totalCO2 = (10 - treeHideCount * co2PerTree).toFixed(1);
 
-  function updateRiskIndexStat(meanVal, oldMeanVal) {
+      stat1.innerHTML = `${treeIcon} Displaced Trees: <b>${treeHideCount}</b> &nbsp; | &nbsp; <span style="color:green;">Estimated CO₂ reduction: <b>${totalCO2}</b> kg/year</span>`;
+    }
+  }
+  function updateRiskStat(meanVal, oldMeanVal, isNearWater) {
     const stat0 = document.getElementById("stat0");
     const riskArrow = document.getElementById("riskArrow");
     if (stat0 && riskArrow) {
@@ -223,12 +285,23 @@ define([
       riskArrow.innerHTML = "";
       const stat3 = document.getElementById("stat3");
       if (stat3) {
-        stat3.innerHTML = `Safe Distance from Water Body <span style="color:green;font-weight:bold;">✔</span>`;
+        // Show green tick if not near water, red cross if near water
+        if (isNearWater) {
+          stat3.innerHTML = `Safe Distance from Water Body <span style="color:red;font-weight:bold;">✗</span>`;
+        } else {
+          stat3.innerHTML = `Safe Distance from Water Body <span style="color:green;font-weight:bold;">✓</span>`;
+        }
       }
     }
   }
 
   return function setupScene(view, scene) {
+    view.popup.dockEnabled = true;
+    view.popup.dockOptions = {
+      buttonEnabled: false,
+      breakpoint: false,
+      position: "top-right",
+    };
     // Title
     const titleDiv = document.getElementById("titleDiv");
     if (titleDiv && scene.portalItem?.title) {
@@ -262,7 +335,7 @@ define([
               // Update Stat 4
               const stat4 = document.getElementById("stat4");
               if (stat4) {
-                stat4.innerHTML = renderElevationStats(newStats);
+                stat4.innerHTML = updateElevationStats(newStats);
               }
             }
           });
@@ -289,6 +362,9 @@ define([
     };
     let treeLayer = scene.layers.find(
       (layer) => layer.title && layer.title.includes("Tree Points")
+    );
+    let hydrolineLayer = scene.layers.find(
+      (layer) => layer.title && layer.title.includes("Hydroline")
     );
     treeLayer.renderer = treeRenderer;
 
@@ -362,12 +438,12 @@ define([
         accessTracksLayer.visible = false;
         // add a line here when clientTracksLayer is ready show the total length of all tracks
         clientTracksLayer.when(() => {
-          calculateAndUpdateTrackCost(clientTracksLayer);
+          calculateAndUpdateCostStats(clientTracksLayer);
         });
       });
     }
 
-    // Suggested Tracks Layer
+    // Suggested Tracks Layer - EXW Editor only take in FL else this could be graphicLayer
     const suggestedTracksLayer = new FeatureLayer({
       title: "Suggested Track",
       source: [],
@@ -414,12 +490,6 @@ define([
           console.warn("Tower layer not found.");
           return;
         }
-        view.popup.dockEnabled = true;
-        view.popup.dockOptions = {
-          buttonEnabled: false,
-          breakpoint: false,
-          position: "top-right",
-        };
 
         // Find the hexbin layer
         const hexbinLayer = scene.layers.find(
@@ -481,6 +551,7 @@ define([
 
             editor.viewModel.watch("state", (state) => {
               if (state === "editing-attributes") {
+                //EXW - Active edit, moving tower
                 const ffvm = editor.viewModel.featureFormViewModel;
                 if (ffvm && ffvm.feature) {
                   const feature = ffvm.feature;
@@ -488,56 +559,7 @@ define([
                     "geometry",
                     (newGeometry) => {
                       if (newGeometry) {
-                        // --- Tree hiding logic ---
-
-                        const query = treeLayer.createQuery();
-                        query.geometry = newGeometry;
-                        query.distance = 100;
-                        query.units = "meters";
-                        query.spatialRelationship = "intersects";
-                        query.returnGeometry = true;
-                        treeLayer.queryFeatures(query).then((result) => {
-                          const treeOIDsToHide = result.features.map(
-                            (f) => f.attributes.OID
-                          );
-
-                          // Update tree filter as before
-                          view.whenLayerView(treeLayer).then((layerView) => {
-                            if (treeOIDsToHide.length > 0) {
-                              layerView.filter = {
-                                where: `OID NOT IN (${treeOIDsToHide.join(
-                                  ","
-                                )})`,
-                              };
-                            } else {
-                              layerView.filter = null;
-                            }
-
-                            // Update Stat 1: Displaced Tree count, icon, and carbon emission reduction
-                            const stat1 = document.getElementById("stat1");
-                            if (stat1) {
-                              // Example SVG icon (replace 'tree.svg' with your own file if needed)
-                              const treeIcon = `<img src="tree-flower-super-mario-fire-flower.png" alt="tree" style="height:1em;vertical-align:middle;margin-right:4px;">`;
-                              // Estimate: 21.77 kg CO₂/year per tree (typical for a mature tree)
-                              const co2PerTree = 21.77;
-                              // EXW - setting the scenario of on average we displace 10 trees per tower, if this tower displace 3 then we got 7 extra
-                              const totalCO2 = (
-                                10 -
-                                treeOIDsToHide.length * co2PerTree
-                              ).toFixed(1);
-
-                              stat1.innerHTML = `${treeIcon} Displaced Trees: <b>${treeOIDsToHide.length}</b> &nbsp; | &nbsp; <span style="color:green;">Estimated CO₂ reduction: <b>${totalCO2}</b> kg/year</span>`;
-                            }
-                          });
-                        });
-
                         // --- Polyline update logic ---
-                        const clientTracksLayer = scene.layers.find(
-                          (layer) =>
-                            layer.title &&
-                            layer.title.includes("Proposed Access Tracks")
-                        );
-
                         if (clientTracksLayer) {
                           const polylineQuery = clientTracksLayer.createQuery();
                           polylineQuery.geometry = newGeometry;
@@ -597,11 +619,8 @@ define([
                     }
                   );
                 }
-              } else if (
-                state === "editing-existing-feature"
-                // ||
-                // state === "awaiting-feature-to-update"
-              ) {
+              } else if (state === "editing-existing-feature") {
+                //EXW - Update edit - finishing in Editor
                 if (deletedTrackInfos.length > 0) {
                   deletedTrackInfos.forEach((trackInfo, idx) => {
                     const trackTowerId = trackInfo.towerId;
@@ -618,15 +637,23 @@ define([
                           const objectId =
                             towerResults.features[0].attributes.OBJECTID; // <-- get the correct OBJECTID
 
+                          //Update Stats and tower label
                           const meanVal = await getMeanForTower(
                             towerGeometry,
                             hexbinLayer,
                             geometryEngine,
                             projection
                           );
-                          updateRiskIndexStat(
+                          const isNearWater = await isTowerIntersectingHydroline(
+                            towerGeometry,
+                            hydrolineLayer,
+                            geometryEngine,
+                            projection
+                          );
+                          updateRiskStat(
                             meanVal,
-                            towerResults.features[0].attributes.meanVal
+                            towerResults.features[0].attributes.meanVal,
+                            isNearWater
                           );
                           clientTowerLayer
                             .applyEdits({
@@ -679,7 +706,8 @@ define([
                         }
                       });
                   });
-                  calculateAndUpdateTrackCost(
+                  // EXW - update the cost stats after applying edits
+                  calculateAndUpdateCostStats(
                     clientTracksLayer,
                     suggestedTracksLayer
                   );
@@ -688,7 +716,30 @@ define([
             });
 
             editor.viewModel.on("sketch-update", (event) => {
-              // You can add custom logic here if needed
+              // EXW - moving tower logic
+              const query = treeLayer.createQuery();
+              query.geometry = event.detail.graphics[0].geometry;
+              query.distance = 100;
+              query.units = "meters";
+              query.spatialRelationship = "intersects";
+              query.returnGeometry = true;
+              treeLayer.queryFeatures(query).then((result) => {
+                const treeOIDsToHide = result.features.map(
+                  (f) => f.attributes.OID
+                );
+
+                // Update tree filter as before
+                view.whenLayerView(treeLayer).then((layerView) => {
+                  if (treeOIDsToHide.length > 0) {
+                    layerView.filter = {
+                      where: `OID NOT IN (${treeOIDsToHide.join(",")})`,
+                    };
+                  } else {
+                    layerView.filter = null;
+                  }
+                  updateTreeStats(treeOIDsToHide.length);
+                });
+              });
             });
           });
         });
