@@ -295,6 +295,26 @@ define([
     }
   }
 
+  // Helper function to generate layerInfo template
+  function makeLayerInfo(
+    layer,
+    enabled,
+    addEnabled = false,
+    updateEnabled = false
+  ) {
+    return {
+      layer: layer,
+      enabled: enabled,
+      addEnabled: addEnabled,
+      updateEnabled: updateEnabled,
+      deleteEnabled: false,
+      attributeUpdatesEnabled: enabled && (addEnabled || updateEnabled),
+      geometryUpdatesEnabled: enabled && (addEnabled || updateEnabled),
+      attachmentsOnCreateEnabled: false,
+      attachmentsOnUpdateEnabled: false,
+    };
+  }
+
   return function setupScene(view, scene) {
     view.popup.dockEnabled = true;
     view.popup.dockOptions = {
@@ -486,6 +506,13 @@ define([
           (layer) =>
             layer.title && layer.title.includes("Tower with Risk Scores")
         );
+        const allTowerLayer = scene.layers.find(
+          (layer) => layer.title && layer.title.includes("All Towers")
+        );
+        const hexGonLayer = scene.layers.find(
+          (layer) =>
+            layer.title && layer.title.includes("Hexbin (No Attributes)")
+        );
         if (!towerLayer) {
           console.warn("Tower layer not found.");
           return;
@@ -546,7 +573,29 @@ define([
             // Editor for towers
             const editor = new Editor({
               view: view,
+              visibleElements: {
+                createFeatureSection: false,
+                tooltipsToggle: false,
+                settingsMenu: false,
+                undoRedoButtons: true,
+              },
+              tooltipOptions: {},
+              layerInfos: [
+                makeLayerInfo(suggestedTracksLayer, true, true, true),
+                makeLayerInfo(clientTowerLayer, true, true, true),
+                makeLayerInfo(towerLayer, false, false, false),
+                makeLayerInfo(hexbinLayer, false, false, false),
+                makeLayerInfo(hydrolineLayer, false, false, false),
+                makeLayerInfo(accessTracksLayer, false, false, false),
+                makeLayerInfo(clientTracksLayer, true, false, false),
+                makeLayerInfo(roadSegmentsLayer, false, false, false),
+                makeLayerInfo(allTowerLayer, false, false, false),
+                makeLayerInfo(hexGonLayer, false, false, false),
+                
+              ],
             });
+            editor.viewModel.tooltipsEnabled = true;
+            console.log(editor);
             view.ui.add(editor, "top-left");
 
             editor.viewModel.watch("state", (state) => {
@@ -644,12 +693,13 @@ define([
                             geometryEngine,
                             projection
                           );
-                          const isNearWater = await isTowerIntersectingHydroline(
-                            towerGeometry,
-                            hydrolineLayer,
-                            geometryEngine,
-                            projection
-                          );
+                          const isNearWater =
+                            await isTowerIntersectingHydroline(
+                              towerGeometry,
+                              hydrolineLayer,
+                              geometryEngine,
+                              projection
+                            );
                           updateRiskStat(
                             meanVal,
                             towerResults.features[0].attributes.meanVal,
