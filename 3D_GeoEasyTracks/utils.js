@@ -207,7 +207,6 @@ define([
     const prevTrackCost = Math.round(startLength * cost);
     const newTrackCost = Math.round(totalLength * cost);
     const costChange = newTrackCost - prevTrackCost;
-    const diffAbs = Math.abs(costChange).toLocaleString();
     let arrow = "";
     let color = "";
     if (costChange < 0) {
@@ -223,9 +222,9 @@ define([
     if (stat2) {
       let diffHtml = "";
       if (costChange !== 0) {
-        diffHtml = ` <span style="color:${color};font-weight:bold;">${arrow} ${diffAbs}$</span>`;
+        diffHtml = ` <span style="color:${color};font-weight:bold;">${arrow} $${Math.abs(costChange).toLocaleString()}</span>`;
       }
-      stat2.innerHTML = `Cost for Suggested Tracks: <b>${newTrackCost.toLocaleString()}$</b>${diffHtml}`;
+      stat2.innerHTML = `Cost for Suggested Tracks: <b>$${newTrackCost.toLocaleString()}</b>${diffHtml}`;
     }
   }
   function updateElevationStats(stats) {
@@ -338,7 +337,7 @@ define([
       new Expand({
         view,
         content: elevationProfile,
-        expanded: true,
+        expanded: false,
         expandIconClass: "esri-icon-chart",
         group: "bottom",
       }),
@@ -417,14 +416,14 @@ define([
         type: "simple",
         symbol: createLine3DSymbol([120, 120, 120, 0.7]), // lighter grey
       };
-      accessTracksLayer.queryFeatures().then((results) => {
-        const clientTrackFeatures = results.features.map((feature, i) => ({
+      accessTracksLayer.queryFeatures().then(async (results) => {
+        const clientTrackFeatures = await Promise.all(results.features.map((feature, i) => ({
           geometry: feature.geometry,
           attributes: {
             OBJECTID: i + 1,
             ...feature.attributes,
           },
-        }));
+        })));
         const trackFields = [
           { name: "OBJECTID", type: "oid", Shape__Length: "double" },
         ];
@@ -454,6 +453,7 @@ define([
             },
           ],
         });
+        console.log(clientTracksLayer)
         scene.add(clientTracksLayer);
         accessTracksLayer.visible = false;
         // add a line here when clientTracksLayer is ready show the total length of all tracks
@@ -581,8 +581,8 @@ define([
               },
               tooltipOptions: {},
               layerInfos: [
-                makeLayerInfo(suggestedTracksLayer, true, true, true),
                 makeLayerInfo(clientTowerLayer, true, true, true),
+                makeLayerInfo(suggestedTracksLayer, true, true, true),
                 makeLayerInfo(towerLayer, false, false, false),
                 makeLayerInfo(hexbinLayer, false, false, false),
                 makeLayerInfo(hydrolineLayer, false, false, false),
