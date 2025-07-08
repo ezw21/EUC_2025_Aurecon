@@ -75,7 +75,7 @@ define([
   // Helper for 3D tower symbol
   function createTowerSymbol(
     modelUrl = "https://ezw21.github.io/EUC_2025_Aurecon/models/transmission_tower.glb",
-    height = 70
+    height = 140
   ) {
     return new PointSymbol3D({
       symbolLayers: [
@@ -222,7 +222,9 @@ define([
     if (stat2) {
       let diffHtml = "";
       if (costChange !== 0) {
-        diffHtml = ` <span style="color:${color};font-weight:bold;">${arrow} $${Math.abs(costChange).toLocaleString()}</span>`;
+        diffHtml = ` <span style="color:${color};font-weight:bold;">${arrow} $${Math.abs(
+          costChange
+        ).toLocaleString()}</span>`;
       }
       stat2.innerHTML = `Cost for Suggested Tracks: <b>$${newTrackCost.toLocaleString()}</b>${diffHtml}`;
     }
@@ -398,7 +400,7 @@ define([
       };
       roadSegmentsLayer.renderer = {
         type: "simple",
-        symbol: createLine3DSymbol([0, 0, 0, 0.7], 5, 2), // black
+        symbol: createLine3DSymbol([120, 120, 120, 0.7]), // lighter grey
       };
     }
 
@@ -414,16 +416,18 @@ define([
       };
       accessTracksLayer.renderer = {
         type: "simple",
-        symbol: createLine3DSymbol([120, 120, 120, 0.7]), // lighter grey
+        symbol: createLine3DSymbol([0, 0, 0, 0.7]), // black
       };
       accessTracksLayer.queryFeatures().then(async (results) => {
-        const clientTrackFeatures = await Promise.all(results.features.map((feature, i) => ({
-          geometry: feature.geometry,
-          attributes: {
-            OBJECTID: i + 1,
-            ...feature.attributes,
-          },
-        })));
+        const clientTrackFeatures = await Promise.all(
+          results.features.map((feature, i) => ({
+            geometry: feature.geometry,
+            attributes: {
+              OBJECTID: i + 1,
+              ...feature.attributes,
+            },
+          }))
+        );
         const trackFields = [
           { name: "OBJECTID", type: "oid", Shape__Length: "double" },
         ];
@@ -453,7 +457,6 @@ define([
             },
           ],
         });
-        console.log(clientTracksLayer)
         scene.add(clientTracksLayer);
         accessTracksLayer.visible = false;
         // add a line here when clientTracksLayer is ready show the total length of all tracks
@@ -493,7 +496,7 @@ define([
       ],
       renderer: {
         type: "simple",
-        symbol: createLine3DSymbol([144, 238, 144, 0.7]), // light green
+        symbol: createLine3DSymbol([0, 0, 0, 0.7]), // black
       },
     });
     scene.add(suggestedTracksLayer);
@@ -591,14 +594,14 @@ define([
                 makeLayerInfo(roadSegmentsLayer, false, false, false),
                 makeLayerInfo(allTowerLayer, false, false, false),
                 makeLayerInfo(hexGonLayer, false, false, false),
-                
               ],
             });
             editor.viewModel.tooltipsEnabled = true;
-            console.log(editor);
+            editor.visibleElements.createFeaturesSection = false;
             view.ui.add(editor, "top-left");
 
             editor.viewModel.watch("state", (state) => {
+              document.body.classList.add("hide-editor-attributes");
               if (state === "editing-attributes") {
                 //EXW - Active edit, moving tower
                 const ffvm = editor.viewModel.featureFormViewModel;
@@ -762,7 +765,7 @@ define([
                     suggestedTracksLayer
                   );
                 }
-              }
+              } else document.body.classList.remove("hide-editor-attributes");
             });
 
             editor.viewModel.on("sketch-update", (event) => {
